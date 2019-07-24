@@ -1,0 +1,533 @@
+---
+title: COMPUTED TOMOGRAPHY-DERIVED RADIOMIC METRICS CAN IDENTIFY RESPONDERS TO IMMUNOTHERAPY IN OVARIAN CANCER - Statistical Analysis
+author: "Junting Zheng"
+date: "July 11, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+# To install biostatR package
+# install.packages("remotes")
+# remotes::install_url("https://github.mskcc.org/datadojo/biostatR/archive/master.zip")
+# This package was used to output table 1 and 2b
+library(biostatR)
+# Other libraries and 
+# functions to estimate HR/OR and create tables
+source("output_function.R")
+options(scipen=3)
+
+knitr::opts_chunk$set(echo = FALSE,
+                      cache = FALSE,
+                      fig.width = 8.5, 
+                      fig.height = 8.5,
+                      fig.align = 'center',
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+```{r}
+# --------------------
+# deidentify dataset
+# submit the codes to the Journal
+
+load(file="immuno_JCO.RData")
+#  write.csv(jco.data, file ="immuno_Lakhman_JCOPC_07032019.csv")
+
+dat <- jco.data
+
+clin.list <- dat %>%
+  dplyr::select(
+    age,                    # Age, years   
+    histology,              # Histology
+    stage,                  # FIGO Stage
+    primary_resection,      # Outcome of primary cytoreduction
+    platinum_status,        # Platinum status: Resistent or sensitive
+    Prior.Lines,            # Prior lines of chemotherapy
+    dz.location.group       # distribution of disease sites on baseline CT
+    )
+
+# for clinical benefit outcome, use ordinal vars
+clin.list.ord <- dat %>%
+  dplyr::select(
+    age,
+    histology,
+    stage3,  # Stage I-II, III and IV
+    primary_resection,
+    sensitive,
+    Prior.Lines
+    )
+
+# regression list
+# feature names started with log. are log transformed values of the features
+reg.list <- 
+  dat[,c("sites.Baseline",               # number of disease sites
+         "log.vol",                      # log-transformed baseline total volume
+         "lcSE.Baseline",                # cluster-site-entropy
+         "log.lcludiss",                 # log-transformed cluster-site-dissimilarity
+         "log.contrast",                 # log-transformed largest lesion contrast
+         "largest.Correlation.Baseline", # largest lesion correlation
+         "largest.Energy.Baseline",      # largest lesion energy
+         "largest.Entropy.Baseline",     # largest lesion entropy
+         "log.homo"                      # log-transformed largest lesion homogeneity
+         )]
+
+# regression list with specified increment units
+#  Ex: largest.Energy.Baseline20 are to show OR/HR for every increment of 20 unit values of energy.
+reg.list20 <- 
+  dat[,c("sites.Baseline",
+         "log.vol",
+         "lcSE.Baseline",
+         "log.lcludiss",
+         "log.contrast", 
+         "largest.Correlation.Baseline20",
+         "largest.Energy.Baseline20",
+         "largest.Entropy.Baseline20",
+         "log.homo")]
+```
+
+
+## Statistical Methods
+
+volumeTTV and several radiomic measures (namely, cluster-site-dissimilarity, Contrastlargest-lesion, Homogeneity largest-lesion) demonstrated highly skewed distributions and were logarithmically transformed for further analysis.   
+
+The Cox proportional hazard regressions were used to examine Uunivariate and multivariable associations of clinical variables and baseline CE-CT derived image-based measures baseline CE-CT-derived total tumor volume, number of disease sites, intra- and inter-tumor heterogeneity radiomic measures with time to off-treatment. were tested with the Cox proportional hazard regression analyses. Patients were censored who wereif remaining on-treatment at the time of last follow-up were censored. Hazard ratios (HR) and 95% confidence intervals were estimated. Ann estimated hazard ration (HR)HR >1 indicated higher risk of off-treatment and an HR <1 indicated lower risk. Univariate and multivariable The aassociations of these featurevariables with durable clinical benefit were tested with the Wilcoxon rank-sum testexamined using logistic regressionsfor univariate analysis and the logistic regression for multivariable analysis. Variables with a univariate test p value<0.10 entered the multivariable analysis, and  Tthe final multivariable model was selected based on backward selection via the the likelihood ratio testAkaike information criteria.   
+
+A sensitivity analysis on model selection was performed using cross-validated LASSO regression including all variables with 200 random repetitions. The variables included in final the multivariable models were also selected >905% times by LASSO regression. Model discriminability was assessed using thehe receiver operating characteristic (ROC) curves analysis and internally validated concordance statistics (c-index) were estimated to assess model fitting 31 with regard to the durable clinical benefit. In multivariable logistic regression, bias-correct c-index was estimated using bootstrapping technique. The correlations were assessed with Spearman’s correlation coefficient. All statistical analyses were performed in the software packages R, version 3.5 (The R Foundation for statistical computing).   
+    
+  
+## Results
+
+__Table 1: Patient characteristics.__  
+
+```{r tab1, results='asis', echo=FALSE}
+
+dat %>%
+  dplyr::select(
+    age,
+    histology,
+    stage,
+    primary_resection,
+    platinum_status,
+    Prior.Lines,
+    dz.location.group
+  ) %>%
+  fmt_table1(
+    statistic = 
+      list(
+        continuous = "{median} ({min}, {max})")
+  ) %>%
+  bold_labels
+
+```
+
+
+```{r}
+# mean and standard deviation
+print("Mean and SD of Age, years")
+mean(dat$age);sd(dat$age)
+print("Mean and SD of prior lines")
+mean(dat$Prior.Lines); sd(dat$Prior.Lines)
+
+
+```
+
+
+
+```{r, eval = F}
+# summary table for transformed features
+reg.list %>%
+  fmt_table1(
+    statistic = 
+      list(
+        continuous = "{median} ({min}, {max})")
+  )
+```
+
+### Association with durable clinical benefit
+
+__Table 2a: Univariate analysis on texture features and durable clinical benefit.__  
+
+```{r responder, results='asis', echo=FALSE}
+# univariate
+# transformed list
+
+# calculate OR
+# uvaout.logistic function in output_functions.R file.
+orout <- uvaout.logistic(reg.list20,
+                         dat$clinical.benefit)
+
+# calculate AUC
+auc2 <- rep(NA,9)
+for (i in 1:ncol(reg.list)){
+  roc1 <- roc(dat$clinical.benefit, 
+             reg.list20[,i])
+  auc2[i] <- paste(round(roc1$auc,3)," (",
+                     round(ci.auc(roc1)[1],3),", ",
+                     round(ci.auc(roc1)[3],3),")",sep="")
+}
+
+# output results
+tab2aout <- cbind(orout, auc2)
+colnames(tab2aout) =  c("OR (95%CI)","p Value", "c-Index (95%CI)")
+kable(tab2aout)
+```
+
+__Table 2b: Associations of clinical characteristics with durable clinical benefit.__  
+
+```{r}
+# association with durable response
+tab.resp.clin <- 
+  clin.list %>%
+  biostatR::fmt_uni_regression(
+    method = "glm",
+    method.args = list(family = binomial),
+    y = "dat$clinical.benefit",
+    exponentiate = TRUE,
+    pvalue_fun = function(x) fmt_pvalue(x, digits = 3)
+  ) %>%
+  add_global(
+    ) 
+
+
+tab2b <- tab.resp.clin %>% 
+  as_tibble()
+
+# add c-index next to p value for ordered or continuous variables
+c_index <- rep(" ", nrow(tab2b))
+# extract row number of in tab2b where p value is not empty
+row.indx <- which(tab2b$`p-value` !=" ")
+for (i in c(1,3,5:6)){
+  roc1 <- roc(dat$clinical.benefit, 
+              clin.list.ord[,i])
+  
+  c_index[row.indx[i]] <- paste(round(roc1$auc,3)," (",
+                     round(ci.auc(roc1)[1],3),", ",
+                     round(ci.auc(roc1)[3],3),")",sep="")
+}
+
+kable(data.frame(tab2b, c_index))
+
+```
+
+
+
+__Table 2c: Multivariable analysis on durable clinical benefit.__  
+
+```{r respmva, results='asis', echo=FALSE}
+# ---
+# MVA
+
+# method I: logistic regression
+# transformed features
+
+# backward selection
+# "full"" model
+mvsb <- glm(clinical.benefit ~
+              sites.Baseline +
+              largest.Energy.Baseline20 +
+              # -2: 
+               age 
+              # -1: lymphadenopathy
+            ,data=dat, family="binomial")
+# summary(mvsb)
+# reduced model
+mvsb1 <- 
+  glm(clinical.benefit ~
+              sites.Baseline +
+              largest.Energy.Baseline20 
+              # -2: age 
+              # -1: lymphadenopathy
+            ,data=dat, family="binomial")
+
+# calculate the likelihood ration test p value
+# 1-pchisq(anova(mvsb1, mvsb)$Deviance[2], 1)
+
+# final model
+mvs2.cb <- glm(clinical.benefit ~ 
+                 sites.Baseline + 
+                 largest.Energy.Baseline20
+               ,data=dat, family="binomial")
+kable(mvaout.logistic(mvs2.cb))
+
+# c index for the mva
+rmv <- 
+  lrm(clinical.benefit ~ 
+        sites.Baseline + 
+        largest.Energy.Baseline20,
+      data=dat, 
+      x=T, y=T)
+
+set.seed(6745264)
+vrmv <- validate(rmv, 
+                 method="boot", 
+                 B=1000)
+
+# bias-corrected c-index
+c.mvs2 <- round((vrmv[1,5]+1)/2,3)
+
+```
+
+
+The above model had a bias-correct c-index of `r c.mvs2`, improved from the univariate analyses of having either number of sites or the largest energy. Other variables did not significantly improve the model fitting.   
+
+
+### Associations with time to off-treatment
+
+__Table 3a: Univariate analysis on texture features and time to off-treatment.__  
+
+```{r tot, results='asis', echo=FALSE}
+s1 <- survfit(Surv(TimeOnTreatment, PD)~1, data=dat)
+# -------------------
+# univariate analysis
+# use transformed
+uni.con2 <- 
+  uni.cox.table(dat$TimeOnTreatment, 
+                dat$PD, 
+                reg.list20, 
+                cindex=T)
+kable(uni.con2)
+
+
+```
+
+
+
+__Table 3b: Univariate analysis on clinical variables and time to off-treatment.__  
+
+```{r}
+# Associations with time on treatment
+uni.clin <- uni.cox.table(dat$TimeOnTreatment, 
+                          dat$PD, 
+                          clin.list[,c("age","Prior.Lines")], 
+                          cindex=T)
+
+cat.clin <- uni.cox.cat.table(
+  dat$TimeOnTreatment, 
+  dat$PD, 
+  clin.list[,c("histology",
+               "stage",
+               "primary_resection",
+               "platinum_status",
+               "dz.location.group")],
+  cindex = T
+  )
+rownames(cat.clin) <- NULL
+# c-index not applicable to non-ordinal variables
+cat.clin[c(1,9,16),5] <- NA
+kable(cat.clin,
+      caption = "Categorical variables")
+kable(uni.clin,
+      caption = "Continuous variables")
+```
+
+
+
+__Table 3c: Multivariable regression on time to off-treatment.__   
+
+```{r mvaprog, results='asis', echo=FALSE}
+
+# ---
+# MVA
+# transformed version
+
+# backward selection uni sig var (p<.10)
+mvsb <-
+  coxph(Surv(dat$TimeOnTreatment, dat$PD)~
+        # -1: sites.Baseline +
+        # -2: lcSE.Baseline +
+         log.lcludiss # +
+        # -4: log.contrast +
+        # -3: log.homo +
+        # -5: dz.location.group
+        ,
+        data= dat)
+mvsb1 <- 
+ #  rms::cph
+coxph(Surv(dat$TimeOnTreatment, dat$PD)~ 
+        # sites.Baseline +
+        # lcSE.Baseline +
+         log.lcludiss # +
+        # log.contrast +
+        # log.homo  +
+        # dz.location.group
+        ,
+        data= dat)  
+# likelihood ratio test
+# anova(mvsb1, mvsb)
+  
+# only one variable remained, no mva model
+
+```
+
+Only one variable remained using backward selection, no multivariable model for time to off-treatment was reported.  
+
+```{r}
+# correlation btwn number of site, energy and icludiss
+corr1 <-
+  cor(dat[,c("sites.Baseline",
+           "largest.Energy.Baseline",
+           "lcluDiss.Baseline",
+           "lcSE.Baseline")],
+      method = "spearman")
+```
+
+Correlation was strong between number of sites and cluster-site-dissimilarity/cluster-site-entropy (Spearman correlation coefficient `r  round(corr1[3,1],3)`/`r round(corr1[4,1],3)`), but low between energy and number of sites/cluster-site-dissimilarity/cluster-site-entropy (`r round(corr1[2,1],3)`/`r round(corr1[2,3],3)`/`r round(corr1[2,4],3)`, respectively). Cluster-site-dissimilarity and cluster-site-entropy had very strong correlation (Spearman correlation coefficient `r round(corr1[3,4],3)`).    
+
+## ROC curve
+
+```{r, width = 8.5, height = 8.5}
+mprob <- mvs2.cb$fitted.values
+# plot for publication
+postscript(width = 8.5, height = 8.5)
+plot.roc(dat$clinical.benefit, mprob, 
+         xlim=c(1,0),
+         cex.lab = 1.5, cex.axis = 1.5, 
+         font.lab=2, font.cex = 2
+         )
+# try to remove plot border
+  # + theme(panel.border = element_blank(),
+  #       panel.grid.major = element_blank(),
+  #       panel.grid.minor = element_blank())
+
+plot.roc(dat$clinical.benefit, 
+         dat$sites.Baseline, 
+         col=2,lty=2,add=T)
+plot.roc(dat$clinical.benefit,  
+         dat$largest.Energy.Baseline, 
+         col=4, lty=4, add=T)
+legend(0.54, 0.15,
+       bquote(paste('Energy'['largest-lesion'],"   0.689")),
+       box.lty = 0, cex = 1.3)
+legend(0.6, 0.2,     c("Number of Sites   0.734",
+                       "",
+                       "Combined             0.821"),
+       col=c(2,4,1),lty=c(2,4,1), lwd = 2,
+       box.lty = 0, cex = 1.3)
+
+
+text(0.23,0.22, "C-index", cex = 1.5, font = 1)
+text(0.3, 0.45, "Durable Clinical Benefit", cex = 1.8, font = 4)
+dev.off()
+```
+
+
+
+
+```{r, eval=FALSE}
+
+# Perform lasso and elastic net penalized regression
+# as sensitivity analysis
+
+# for categorical variables, 
+#  create dummy variables, 
+#   use grpreg package for grouped covariates in penalized regression.
+library(grpreg)
+# a library to create dummy variables
+library(fastDummies)
+
+# a list of all variables: texture and clinical
+all.list <-
+  data.frame(reg.list20, clin.list) %>%
+  fastDummies::dummy_cols(remove_first_dummy = TRUE) %>%
+  dplyr::select(-c("histology",
+                   "stage",
+                   "primary_resection",
+                   "platinum_status",
+                   "dz.location.group")) 
+# rename columns
+group <-
+  c(colnames(all.list)[1: 11],
+    "histology", "histology",
+    "stage", "stage",
+    "resection", "resection",
+    "platinum",
+    "dz.location","dz.location")
+
+# 4-fold cross validation
+# ---------------------------------------------------------
+# a function to output elastic net selected features
+# run a number of times with different seed, 
+# Aim to find a regression with features that showed >70% times
+topfeature.fun <- 
+  function(cvdata, 
+           outcome = dat$clinical.benefit,
+           penalty = "grLasso",
+           alpha = 1,
+           rep = 200,
+           family = c("binomial")){
+    slist <- NULL
+    for (j in 1:rep){
+     set.seed(123*j)
+     cv.enet <- 
+      cv.grpreg(cvdata, 
+                outcome, 
+                group,
+                family = family,
+                penalty = "grLasso",
+                alpha = alpha, 
+                nfolds = 4)
+      my.beta.ls <- coef(cv.enet, 
+                    s = cv.enet$lambda.min, 
+                    exact = TRUE, 
+                    x = cvdata, 
+                    y = outcome)
+    
+    # cum list of texture features with non-zero coef 
+    # -1 to remove intercept
+    slist <- 
+      c(slist,
+        colnames(cvdata)[
+          which(
+            abs(my.beta.ls)>1e-15
+            )-1])
+    }
+  toplist <- 
+    sort(
+      table(slist),
+      decreasing = TRUE
+      )[1:10]
+  return(toplist)
+}
+
+# list of top selected features
+# outcome = durable clinical benefit
+enet.list <- 
+  topfeature.fun(cvdata = all.list,
+               alpha = 0.5,
+               family = "binomial")
+
+lasso.list <- 
+    topfeature.fun(cvdata = all.list,
+               alpha = 1,
+               family = "binomial")
+
+# -------------------------
+# results
+
+# Outcome = Durable clinical benenfit
+#### enet.list (alpha = 0.5)
+# largest.Energy.Baseline20             lcSE.Baseline              log.lcludiss 
+#                       191                       191                       191 
+#            sites.Baseline   histology_Clear_cell_ca           histology_other 
+#                       189                       136                       136 
+#                       age                stage_I-II                 stage_III 
+#                        90                        20                        20 
+#      dz.location.group_DM 
+#                         3 
+
+#### lasso.list (alpha = 1)
+# largest.Energy.Baseline20              log.lcludiss            sites.Baseline 
+#                       191                       190                       185 
+#             lcSE.Baseline   histology_Clear_cell_ca           histology_other 
+#                       178                       120                       120 
+#                       age                stage_I-II                 stage_III 
+#                        58                         4                         4 
+#      dz.location.group_DM 
+#                         1       
+ 
+
+# sites.baseline, lcSE.Baseline and log.lcludiss were highly correlated. Both lasso and elastic net selected all 3 features in addition to the baseline largest energy. When we fit all four variables in a logistic regression, only baseline largest energy remained significant. This is due to the small sample size. Consider the power limitation and strong correlations, we decided to report the model using backward selection.  
+```
+
+
